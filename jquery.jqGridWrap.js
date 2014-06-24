@@ -1,8 +1,44 @@
 /**
- * Created by davidportella on 27-02-14.
+ * @license sigeaJqGrid  0.0.1 - jQuery Sigea Grid
+ * Copyright (c) 2013, David Portella, dportella@gisma.cl
+ * Dual licensed under the MIT and GPL licenses
+ * http://www.opensource.org/licenses/mit-license.php
+ * http://www.gnu.org/licenses/gpl-2.0.html
  */
 ;
 (function ($, window, undefined) {
+
+    function loadBase(grid) {
+        $("option[value='100000000']").text('Todos');
+
+        // Hack nuevos tooltips
+        /**
+         * @todo: id match dinamico
+         */
+        $('.ui-jqgrid-htable th').filter(function () {
+            return this.id.match(/^deprecated/) != null;
+        }).each(function (i) {
+            var col = grid.getGridParam('colModel');
+
+            if (col[i].hasOwnProperty('sigeaAttr')) {
+                $(this).tooltip({ content: col[i].sigeaAttr.label });
+            } else {
+                $(this).tooltip({ content: this.lastChild.innerText });
+            }
+        });
+    }
+
+    function loadFinal() {
+        $.unblockUI();
+    }
+
+    function loadComplete(loadBase, loadCustom, loadFinal, grid) {
+        loadBase(grid);
+        if (loadCustom !== false) {
+            loadCustom();
+        }
+        loadFinal();
+    }
 
     /**
      * Este metodo se ejecuta despues de agregar la funcionalidad
@@ -12,7 +48,7 @@
      * @param options
      * @constructor
      */
-    var JqGridWrap = function (elem, options) {
+    var SigeaJqGrid = function (elem, options) {
         this.elem = elem;
         this.$elem = $(elem);
 
@@ -22,10 +58,10 @@
     };
 
     /**
-     * Prototype del objeto JqGridWrap
+     * Prototype del objeto SigeaJqGrid
      * @type {{defaults: {caption: string, datatype: string, viewrecords: boolean, height: number, rowNum: number, cmTemplate: {sortable: boolean}, autowidth: boolean, shrinkToFit: boolean, headertitles: boolean, sortable: boolean}, init: init, getPager: getPager, columnChooser: columnChooser, excelButton: excelButton, extraButtons: extraButtons}}
      */
-    JqGridWrap.prototype = {
+    SigeaJqGrid.prototype = {
         defaults     : {
             caption     : "Titulo",
             datatype    : "json",
@@ -36,14 +72,33 @@
             autowidth   : true,
             shrinkToFit : false,
             headertitles: true,
-            sortable    : true
+            sortable    : true,
+            loadui      : 'block'
         },
         init         : function (options) {
+
             var grid_options = options.options,
                 pager_options = options.pager ?
                     options.pager :
-                {edit: false, add: false, del: false, search: false}
+                {edit: false, add: false, del: false, search: false},
+                loadCustom = options.loadCustom,
+                pager_extra_options = options.extra_pager ?
+                    options.extra_pager :
+                {},
+                that = this
                 ;
+
+            if (grid_options.loadComplete === undefined) {
+
+                grid_options.loadComplete = function () {
+                    loadComplete(loadBase, loadCustom, loadFinal,that.$elem);
+                };
+            } else if (grid_options.loadComplete === 'default') {
+
+                grid_options.loadComplete = function () {
+                    loadComplete(loadBase, false, loadFinal, that.$elem);
+                };
+            }
 
             this.config = $.extend({}, this.defaults, grid_options);
             this.pager = grid_options.pager;
@@ -51,7 +106,39 @@
 
             this.$elem.jqGrid(this.config);
 
-            this.$elem.jqGrid('navGrid', this.pager, pager_options);
+            pager_options = $.extend(
+                {},
+                {
+                    beforeRefresh: function () {
+                        var cm = grid_options.colModel;
+
+                        var i = 0, cmi, l = cm.length;
+                        for (; i < l; i++) {
+                            cmi = cm[i];
+                            if (typeof cmi.hidden === 'undefined' || cmi.hidden === false) {
+                                that.$elem.jqGrid('showCol', cmi.name);
+                            } else {
+                                that.$elem.jqGrid('hideCol', cmi.name);
+                            }
+                        }
+                    }
+                },
+                pager_options
+            );
+
+            if (options.onclickSubmit) {
+                this.$elem.jqGrid(
+                    'navGrid',
+                    this.pager,
+                    pager_options,
+                    {},
+                    {},
+                    options.onclickSubmit,
+                    {}
+                );
+            } else {
+                this.$elem.jqGrid('navGrid', this.pager, pager_options);
+            }
 
         },
         getPager     : function () {
@@ -64,9 +151,11 @@
 
             this.$elem.jqGrid('navButtonAdd', pager, {
                 caption      : "Columnas",
-                title        : "Mostrar/ocultar Columnas",
+                title        : 'Seleccione las columnas que desea visualizar en la pantalla.',
                 onClickButton: function () {
-                    that.$elem.jqGrid('columnChooser');
+                    that.$elem.jqGrid('columnChooser', {
+                        title: 'Seleccione las columnas que desea visualizar. Para selección múltiple, mantenga presionada la tecla "ctrl" en su teclado'
+                    });
                 }
             });
             return this.$elem;
@@ -114,19 +203,19 @@
      * @param options
      * @returns {$.fn}
      */
-    $.fn.jqGridWrap = function (options) {
+    $.fn.sigeaJqGrid = function (options) {
 
         if (typeof options === 'string') {
             var args = Array.prototype.slice.call(arguments, 1);
-            var jqGridWrap = this.data('jqGridWrap') ?
-                this.data('jqGridWrap') :
-                new JqGridWrap(this);
+            var sigeaJqGrid = this.data('sigeaJqGrid') ?
+                this.data('sigeaJqGrid') :
+                new SigeaJqGrid(this);
 
-            if (jqGridWrap[options]) {
-                jqGridWrap[options].apply(jqGridWrap, args);
+            if (sigeaJqGrid[options]) {
+                sigeaJqGrid[options].apply(sigeaJqGrid, args);
             }
         } else if (typeof options == 'object' || !options) {
-            this.data('jqGridWrap', new JqGridWrap(this, options));
+            this.data('sigeaJqGrid', new SigeaJqGrid(this, options));
         } else {
             $.error('Error, parámetro pasado es incorreto');
         }
@@ -134,6 +223,6 @@
         return this;
     };
 
-    //window.JqGridWrap = JqGridWrap;
+    //window.SigeaJqGrid = SigeaJqGrid;
 
 })(jQuery, window);
