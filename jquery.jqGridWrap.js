@@ -4,6 +4,38 @@
 ;
 (function ($, window, undefined) {
 
+    function loadBase(grid) {
+        $("option[value='100000000']").text('Todos');
+
+        // Hack nuevos tooltips
+        /**
+         * @todo: id match dinamico
+         */
+        $('.ui-jqgrid-htable th').filter(function () {
+            return this.id.match(/^deprecated/) != null;
+        }).each(function (i) {
+            var col = grid.getGridParam('colModel');
+
+            if (col[i].hasOwnProperty('sigeaAttr')) {
+                $(this).tooltip({ content: col[i].sigeaAttr.label });
+            } else {
+                $(this).tooltip({ content: this.lastChild.innerText });
+            }
+        });
+    }
+
+    function loadFinal() {
+        $.unblockUI();
+    }
+
+    function loadComplete(loadBase, loadCustom, loadFinal, grid) {
+        loadBase(grid);
+        if (loadCustom !== false) {
+            loadCustom();
+        }
+        loadFinal();
+    }
+
     /**
      * Este metodo se ejecuta despues de agregar la funcionalidad
      * al stock de metodos Jquery ($) configura y gatilla init
@@ -36,14 +68,33 @@
             autowidth   : true,
             shrinkToFit : false,
             headertitles: true,
-            sortable    : true
+            sortable    : true,
+            loadui      : 'block'
         },
         init         : function (options) {
+
             var grid_options = options.options,
                 pager_options = options.pager ?
                     options.pager :
-                {edit: false, add: false, del: false, search: false}
+                {edit: false, add: false, del: false, search: false},
+                loadCustom = options.loadCustom,
+                pager_extra_options = options.extra_pager ?
+                    options.extra_pager :
+                {},
+                that = this
                 ;
+
+            if (grid_options.loadComplete === undefined) {
+
+                grid_options.loadComplete = function () {
+                    loadComplete(loadBase, loadCustom, loadFinal,that.$elem);
+                };
+            } else if (grid_options.loadComplete === 'default') {
+
+                grid_options.loadComplete = function () {
+                    loadComplete(loadBase, false, loadFinal, that.$elem);
+                };
+            }
 
             this.config = $.extend({}, this.defaults, grid_options);
             this.pager = grid_options.pager;
@@ -51,7 +102,40 @@
 
             this.$elem.jqGrid(this.config);
 
-            this.$elem.jqGrid('navGrid', this.pager, pager_options);
+            pager_options = $.extend(
+                {},
+                {
+                    beforeRefresh: function () {
+                        var cm = grid_options.colModel;
+
+                        var i = 0, cmi, l = cm.length;
+                        for (; i < l; i++) {
+                            cmi = cm[i];
+                            if (typeof cmi.hidden === 'undefined' || cmi.hidden === false) {
+                                that.$elem.jqGrid('showCol', cmi.name);
+                            } else {
+                                that.$elem.jqGrid('hideCol', cmi.name);
+                            }
+                        }
+                    }
+                },
+                pager_options
+            );
+
+            if (options.onclickSubmit) {
+                this.$elem.jqGrid(
+                    'navGrid',
+                    this.pager,
+                    pager_options,
+                    {},
+                    {},
+                    options.onclickSubmit,
+                    {}
+                );
+            } else {
+                this.$elem.jqGrid('navGrid', this.pager, pager_options);
+            }
+
 
         },
         getPager     : function () {
@@ -64,11 +148,14 @@
 
             this.$elem.jqGrid('navButtonAdd', pager, {
                 caption      : "Columnas",
-                title        : "Mostrar/ocultar Columnas",
+                title        : 'Seleccione las columnas que desea visualizar en la pantalla.',
                 onClickButton: function () {
-                    that.$elem.jqGrid('columnChooser');
+                    that.$elem.jqGrid('columnChooser', {
+                        title: 'Seleccione las columnas que desea visualizar. Para selección múltiple, mantenga presionada la tecla "ctrl" en su teclado'
+                    });
                 }
             });
+            
             return this.$elem;
         },
         excelButton  : function (args) {
