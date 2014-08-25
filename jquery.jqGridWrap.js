@@ -155,7 +155,7 @@
                     });
                 }
             });
-            
+
             return this.$elem;
         },
         excelButton  : function (args) {
